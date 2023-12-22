@@ -4,6 +4,7 @@ using FxEngine.Shaders;
 using ICSharpCode.AvalonEdit.Indentation.CSharp;
 using OpenTK;
 using OpenTK.Graphics.OpenGL;
+using OpenTK.Input;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -27,6 +28,7 @@ namespace FxGUI
             InitializeComponent();
 
             glControl = new OpenTK.GLControl(new OpenTK.Graphics.GraphicsMode(32, 24, 0, 4), 3, 3, OpenTK.Graphics.GraphicsContextFlags.ForwardCompatible);
+            glControl.MouseDown += GlControl_MouseDown;
             panel1.Controls.Add(glControl);
             glControl.Dock = DockStyle.Fill;
             glControl.Paint += Gl_Paint;
@@ -36,8 +38,69 @@ namespace FxGUI
             te.TextChanged += Te_TextChanged;
             ctx.GameWindow = glControl;
             glControl.Resize += GlControl_Resize;
+            te.FontSize = 14;
+
+            glControl.KeyDown += GlControl_KeyDown;
+        }
+        public static bool IsKeyPressed(Key key)
+        {
+            return Keyboard.GetState()[key];
+        }
+        internal static Tuple<Key[], Key[]> UpdateLatches()
+        {
+            List<Key> pressed = new List<Key>();
+            List<Key> pressed2 = new List<Key>();
+            for (int i = 0; i < 150; i++)
+            {
+                var key = i;
+                if (IsKeyPressed((Key)key))
+                {
+                    pressed2.Add((Key)key);
+                    if (!latches[key])
+                    {
+                        latches[key] = true;
+                        pressed.Add((Key)key);
+                    }
+                }
+                else
+                {
+                    latches[key] = false;
+                }
+            }
+            return new Tuple<Key[], Key[]>(pressed.ToArray(), pressed2.ToArray());
+        }
+
+        public static bool[] latches = new bool[256];
+        private void GlControl_KeyDown(object sender, KeyEventArgs e)
+        {
+            var tuple = UpdateLatches();
+            var pressed = tuple.Item1;
+            var pressed2 = tuple.Item2;
+            if (pressed2.Any())
+            {
+                KeyGlGuiEvent ev = new KeyGlGuiEvent();
+                ev.Key = pressed2.First();
 
 
+                foreach (var item in Elements)
+                {
+                    item.Event(ctx, ev);
+                    if (ev.Handled) break;
+                }
+            }
+        }
+
+        private void GlControl_MouseDown(object sender, System.Windows.Forms.MouseEventArgs e)
+        {
+            var pos = ctx.PointToClient(Cursor.Position);
+            var ev = new MouseClickGlGuiEvent() { Position = new System.Drawing.Point(pos.X, pos.Y) };
+
+            foreach (var item in Elements)
+            {
+                item.Event(ctx, ev);
+                if (ev.Handled)
+                    break;
+            }
         }
 
         private void GlControl_Resize(object sender, EventArgs e)
@@ -49,6 +112,16 @@ namespace FxGUI
 
         void recParse(XElement item, GlGuiElement parent)
         {
+            float w = 100;
+            float l = 0;
+            float t = 0;
+            float h = 30;
+            if (item.Attribute("left") != null) l = item.Attribute("left").Value.ToFloat();
+            if (item.Attribute("width") != null) w = item.Attribute("width").Value.ToFloat();
+            if (item.Attribute("top") != null) t = item.Attribute("top").Value.ToFloat();
+            if (item.Attribute("height") != null) h = item.Attribute("height").Value.ToFloat();
+
+
             if (item.Name == "screen")
             {
                 var spl = item.Attribute("backColor").Value.Split(new char[] { ';', ' ' }).ToArray();
@@ -59,17 +132,22 @@ namespace FxGUI
             {
                 var label = new NativeLabel() { };
 
-                float w = 0;
-                float l = 0;
-                float t = 0;
-                if (item.Attribute("left") != null) l = item.Attribute("left").Value.ToFloat();
-                if (item.Attribute("width") != null) w = item.Attribute("width").Value.ToFloat();
-                if (item.Attribute("top") != null) t = item.Attribute("top").Value.ToFloat();
-
 
                 //var h = item.Attribute("height").Value.ToFloat();
-                label.Rect = new GuiBounds(l, t, w, 30);
+                label.Rect = new GuiBounds(l, t, w, h);
                 label.Text = item.Attribute("text").Value;
+                Elements.Add(label);
+
+            }
+            if (item.Name == "panel")
+            {
+                var label = new NativePanel() { };
+
+                parent = label;
+                //var h = item.Attribute("height").Value.ToFloat();
+                label.Rect = new GuiBounds(l, t, w, h);
+                label.Title = item.Attribute("title").Value;
+                label.titleH = 30;
                 Elements.Add(label);
 
             }
@@ -77,16 +155,48 @@ namespace FxGUI
             {
                 var btn = new NativeButton() { };
 
-                float w = 0;
-                float l = 0;
-                float t = 0;
-                if (item.Attribute("left") != null) l = item.Attribute("left").Value.ToFloat();
-                if (item.Attribute("width") != null) w = item.Attribute("width").Value.ToFloat();
-                if (item.Attribute("top") != null) t = item.Attribute("top").Value.ToFloat();
 
 
                 //var h = item.Attribute("height").Value.ToFloat();
-                btn.Rect = new GuiBounds(l, t, w, 30);
+                btn.Rect = new GuiBounds(l, t, w, h);
+                btn.Caption = item.Attribute("text").Value;
+                if(parent is NativePanel np)
+                {
+                    np.Childs.Add(btn);
+                }
+                else
+                Elements.Add(btn);
+
+            }
+            if (item.Name == "textBox")
+            {
+                var btn = new NativeTextBox() { };
+
+                //var h = item.Attribute("height").Value.ToFloat();
+                btn.Rect = new GuiBounds(l, t, w, h);
+                btn.Text = "0";
+                Elements.Add(btn);
+
+            }
+            if (item.Name == "trackBar")
+            {
+                var btn = new NativeTrackBar() { };
+
+                //var h = item.Attribute("height").Value.ToFloat();
+                btn.Rect = new GuiBounds(l, t, w, h);
+
+                Elements.Add(btn);
+
+            }
+            if (item.Name == "checkBox")
+            {
+                var btn = new NativeCheckBox() { };
+
+
+
+
+                //var h = item.Attribute("height").Value.ToFloat();
+                btn.Rect = new GuiBounds(l, t, w, h);
                 btn.Caption = item.Attribute("text").Value;
                 Elements.Add(btn);
 
@@ -157,24 +267,26 @@ namespace FxGUI
 
         float[] clearColor = new float[] { 0.1f, 0.1f, 0.1f, 1f };
         GlControlDrawingContext ctx = new GlControlDrawingContext();
+
         void Redraw()
         {
             var pos = ctx.PointToClient(Cursor.Position);
             var ev = new GlGuiEvent() { Position = new System.Drawing.Point(pos.X, pos.Y) };
-            
-            
 
             foreach (var item in Elements)
             {
                 item.Event(ctx, ev);
-                if (ev.Handled) return;
-                
+                if (ev.Handled)
+                    break;
             }
+
 
             GL.ClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-            
-            var o2 = Matrix4.CreateOrthographic(glControl.Width, glControl.Width, -25e4f, 25e4f);
+            var aspect = glControl.Width / (float)glControl.Height;
+            var o2= Matrix4.CreateOrthographic(glControl.Width, glControl.Width / aspect, -25e4f, 25e4f);
+
+            //var o2 = Matrix4.CreateOrthographic(glControl.Width, glControl.Width, -25e4f, 25e4f);
 
             GL.MatrixMode(MatrixMode.Projection);
             GL.LoadMatrix(ref o2);
@@ -186,13 +298,13 @@ namespace FxGUI
             GL.Translate(-glControl.Width / 2, -glControl.Height / 2, 0);
 
             GL.Disable(EnableCap.Lighting);
-            
-            GL.Disable(EnableCap.DepthTest);            
+
+            GL.Disable(EnableCap.DepthTest);
             GL.Color3(Color.Red);
             GL.Begin(PrimitiveType.Lines);
             GL.Vertex3(0, 0, 0);
             GL.Vertex3(0, 100, 0);
-            GL.End(); 
+            GL.End();
             GL.Color3(Color.Blue);
             GL.Begin(PrimitiveType.Lines);
             GL.Vertex3(0, 0, 0);
@@ -207,20 +319,16 @@ namespace FxGUI
 
         }
 
-
-        private void richTextBox1_TextChanged(object sender, EventArgs e)
-        {
-
-        }
-
+                
         private void timer1_Tick(object sender, EventArgs e)
         {
             glControl.Invalidate();
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        
+        private void sample1ToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            te.FontSize = 14;
+
             te.Text = FormatXml(@"
                 <root>
 <screen backColor=""0.1f 0.1f 0.1f 0.1f"">
@@ -229,6 +337,65 @@ namespace FxGUI
 <button text=""+"" left=""30"" top=""200"" width=""30""/>
 <button text=""-"" left=""30"" top=""230"" width=""30""/>
 </stackPanel>
+</screen>
+</root>");
+        }
+
+        private void sample2ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+
+            te.Text = FormatXml(@"
+                <root>
+<screen backColor=""0.1f 0.1f 0.1f 0.1f"">
+<stackPanel>
+<label text=""checked: false"" top=""170"" width=""170""/>
+<checkBox text=""test"" left=""30"" top=""200"" width=""25"" height=""25""/>
+
+</stackPanel>
+</screen>
+</root>");
+        }
+
+        private void sample3ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            te.Text = FormatXml(@"
+                <root>
+<screen backColor=""0.1f 0.1f 0.1f 0.1f"">
+<stackPanel>
+
+<trackBar  left=""30"" top=""200"" width=""125"" height=""25""/>
+
+</stackPanel>
+</screen>
+</root>");
+        }
+
+        private void sample4ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            te.Text = FormatXml(@"
+                <root>
+<screen backColor=""0.1f 0.1f 0.1f 0.1f"">
+<stackPanel>
+
+<textBox  left=""30"" top=""200"" width=""125"" height=""25""/>
+
+</stackPanel>
+</screen>
+</root>");
+        }
+
+        private void sample5ToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            te.Text = FormatXml(@"
+                <root>
+<screen backColor=""0.1f 0.1f 0.1f 0.1f"">
+<panel title=""menu"" left=""30"" top=""200"" width=""155"" height=""155"">
+
+<button text=""button 1""  left=""10"" top=""50"" width=""125"" height=""25""/>
+<button text=""button 1""  left=""10"" top=""80"" width=""125"" height=""25""/>
+<button text=""button 1""  left=""10"" top=""110"" width=""125"" height=""25""/>
+
+</panel>
 </screen>
 </root>");
         }
