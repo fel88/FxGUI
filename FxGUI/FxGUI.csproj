@@ -94,5 +94,9 @@
       <Version>1.0.0</Version>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fonts\atlas.png" />
+    <EmbeddedResource Include="Fonts\atlas.xml" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
