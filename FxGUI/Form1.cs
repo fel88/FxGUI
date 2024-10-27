@@ -1,23 +1,17 @@
-﻿using FxEngine.Cameras;
-using FxEngine.Gui;
-using FxEngine.Shaders;
-using ICSharpCode.AvalonEdit.Indentation.CSharp;
-using OpenTK;
+﻿using FxEngine.Gui;
+using OpenTK.GLControl;
 using OpenTK.Graphics.OpenGL;
-using OpenTK.Input;
+using OpenTK.Mathematics;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Linq;
-using System.Reflection.Emit;
-using System.Runtime.Serialization;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
+using System.Runtime.InteropServices;
+using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Xml.Linq;
+using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
 
 namespace FxGUI
 {
@@ -26,8 +20,12 @@ namespace FxGUI
         public Form1()
         {
             InitializeComponent();
-
-            glControl = new OpenTK.GLControl(new OpenTK.Graphics.GraphicsMode(32, 24, 0, 4), 3, 3, OpenTK.Graphics.GraphicsContextFlags.ForwardCompatible);
+            
+            //new OpenTK.Graphics.GraphicsMode(32, 24, 0, 4), 3, 3, OpenTK.Graphics.GraphicsContextFlags.ForwardCompatible
+            GLControlSettings settings = new GLControlSettings();
+            settings.NumberOfSamples = 8;
+            settings.Profile = OpenTK.Windowing.Common.ContextProfile.Compatability;
+            glControl = new GLControl(settings);
             glControl.MouseDown += GlControl_MouseDown;
             panel1.Controls.Add(glControl);
             glControl.Dock = DockStyle.Fill;
@@ -39,47 +37,101 @@ namespace FxGUI
             ctx.GameWindow = glControl;
             glControl.Resize += GlControl_Resize;
             te.FontSize = 14;
-
+            glControl.MouseEnter += GlControl_MouseEnter;
             glControl.KeyDown += GlControl_KeyDown;
         }
-        public static bool IsKeyPressed(Key key)
+
+        private void GlControl_MouseEnter(object sender, EventArgs e)
         {
-            return Keyboard.GetState()[key];
+            glControl.Focus();
         }
-        internal static Tuple<Key[], Key[]> UpdateLatches()
+
+        protected override bool ProcessCmdKey(ref Message msg, System.Windows.Forms.Keys keyData)
         {
-            List<Key> pressed = new List<Key>();
-            List<Key> pressed2 = new List<Key>();
+            if (glControl.ClientRectangle.Contains(glControl.PointToClient(System.Windows.Forms.Cursor.Position)))
+            {
+                KeyGlGuiEvent ev = new KeyGlGuiEvent
+                {
+                    Key = (Keys)keyData
+                };
+                if (keyData == System.Windows.Forms.Keys.Delete)
+                {
+                    ev.Key = Keys.Delete;
+                }
+                if (keyData == System.Windows.Forms.Keys.Back)
+                {
+                    ev.Key = Keys.Backspace;
+                }
+                if (keyData == System.Windows.Forms.Keys.Space)
+                {
+                    ev.Key = Keys.Space;
+                }
+                if (keyData >= System.Windows.Forms.Keys.D0 && keyData <= System.Windows.Forms.Keys.D9)
+                {
+                    ev.Key = Keys.KeyPad0+(keyData- System.Windows.Forms.Keys.D0);
+                }
+
+                foreach (var item in Elements)
+                {
+                    item.Event(ctx, ev);
+                    if (ev.Handled)
+                        break;
+                }
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, ExactSpelling = true)]
+        public static extern short GetKeyState(int keyCode);
+        public const int KEY_PRESSED = 0x8000;
+
+        public static bool IsKeyDown(Keys key)
+        {
+            return Convert.ToBoolean(GetKeyState((int)key) & KEY_PRESSED);
+        }
+
+        public static bool IsKeyPressed(Keys key)
+        {
+            return IsKeyDown(key);
+        }
+        internal static Tuple<Keys[], Keys[]> UpdateLatches()
+        {
+            List<Keys> pressed = new List<Keys>();
+            List<Keys> pressed2 = new List<Keys>();
             for (int i = 0; i < 150; i++)
             {
-                var key = i;
-                if (IsKeyPressed((Key)key))
+                var key = (Keys)i;
+                if (IsKeyPressed(key))
                 {
-                    pressed2.Add((Key)key);
-                    if (!latches[key])
+                    pressed2.Add(key);
+                    if (!latches[i])
                     {
-                        latches[key] = true;
-                        pressed.Add((Key)key);
+                        latches[i] = true;
+                        pressed.Add(key);
                     }
                 }
                 else
                 {
-                    latches[key] = false;
+                    latches[i] = false;
                 }
             }
-            return new Tuple<Key[], Key[]>(pressed.ToArray(), pressed2.ToArray());
+            return new Tuple<Keys[], Keys[]>(pressed.ToArray(), pressed2.ToArray());
         }
 
         public static bool[] latches = new bool[256];
         private void GlControl_KeyDown(object sender, KeyEventArgs e)
         {
-            var tuple = UpdateLatches();
-            var pressed = tuple.Item1;
-            var pressed2 = tuple.Item2;
-            if (pressed2.Any())
+
+            // var tuple = UpdateLatches();
+            //  var pressed = tuple.Item1;
+            //  var pressed2 = tuple.Item2;
+            //  if (pressed2.Any())
             {
                 KeyGlGuiEvent ev = new KeyGlGuiEvent();
-                ev.Key = pressed2.First();
+                //ev.Key = pressed2.First();
+                ev.Key = (Keys)e.KeyValue;
 
 
                 foreach (var item in Elements)
@@ -92,7 +144,7 @@ namespace FxGUI
 
         private void GlControl_MouseDown(object sender, System.Windows.Forms.MouseEventArgs e)
         {
-            var pos = ctx.PointToClient(Cursor.Position);
+            var pos = ctx.PointToClient(System.Windows.Forms.Cursor.Position);
             var ev = new MouseClickGlGuiEvent() { Position = new System.Drawing.Point(pos.X, pos.Y) };
 
             foreach (var item in Elements)
@@ -160,12 +212,12 @@ namespace FxGUI
                 //var h = item.Attribute("height").Value.ToFloat();
                 btn.Rect = new GuiBounds(l, t, w, h);
                 btn.Caption = item.Attribute("text").Value;
-                if(parent is NativePanel np)
+                if (parent is NativePanel np)
                 {
                     np.Childs.Add(btn);
                 }
                 else
-                Elements.Add(btn);
+                    Elements.Add(btn);
 
             }
             if (item.Name == "textBox")
@@ -270,7 +322,7 @@ namespace FxGUI
 
         void Redraw()
         {
-            var pos = ctx.PointToClient(Cursor.Position);
+            var pos = ctx.PointToClient(System.Windows.Forms.Cursor.Position);
             var ev = new GlGuiEvent() { Position = new System.Drawing.Point(pos.X, pos.Y) };
 
             foreach (var item in Elements)
@@ -284,7 +336,7 @@ namespace FxGUI
             GL.ClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             var aspect = glControl.Width / (float)glControl.Height;
-            var o2= Matrix4.CreateOrthographic(glControl.Width, glControl.Width / aspect, -25e4f, 25e4f);
+            var o2 = Matrix4.CreateOrthographic(glControl.Width, glControl.Width / aspect, -25e4f, 25e4f);
 
             //var o2 = Matrix4.CreateOrthographic(glControl.Width, glControl.Width, -25e4f, 25e4f);
 
@@ -319,13 +371,13 @@ namespace FxGUI
 
         }
 
-                
+
         private void timer1_Tick(object sender, EventArgs e)
         {
             glControl.Invalidate();
         }
 
-        
+
         private void sample1ToolStripMenuItem_Click(object sender, EventArgs e)
         {
 
@@ -398,6 +450,17 @@ namespace FxGUI
 </panel>
 </screen>
 </root>");
+        }
+
+        private void Form1_Leave(object sender, EventArgs e)
+        {
+
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            var mf = new MessageFilter();
+            System.Windows.Forms.Application.AddMessageFilter(mf);
         }
     }
 }
